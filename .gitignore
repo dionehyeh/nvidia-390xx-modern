@@ -1,0 +1,19 @@
+# Temporary build folders
+build_tmp/
+*.log
+
+# Extracted proprietary archive (350MB+)
+NVIDIA-Linux-x86_64-390.157/
+
+# Built kernel objects
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+
+# Large installer binaries (recommended to publish via GitHub Releases)
+*.run
