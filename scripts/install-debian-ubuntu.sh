@@ -55,6 +55,18 @@ if [ -f "${PROJECT_DIR}/configs/nvidia-390xx.rules" ]; then
     udevadm control --reload-rules || true
 fi
 
+# Check if a graphical session (Wayland or X11) is currently running
+if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ] || systemctl is-active --quiet display-manager 2>/dev/null; then
+    echo ""
+    echo "=========================================================================="
+    echo " [!] A graphical desktop session (Wayland or Xorg) is currently active!"
+    echo "=========================================================================="
+    echo " The NVIDIA installer cannot install while the display server is running."
+    echo " Launching Step 1 to transition cleanly into text console (CLI) mode..."
+    echo "=========================================================================="
+    exec bash "${SCRIPT_DIR}/step1-exit-gui.sh" "$@"
+fi
+
 echo "[5/5] Launching patched NVIDIA installer with DKMS enabled..."
 if lsmod | grep -q nouveau; then
     echo ""

@@ -121,124 +121,89 @@ Before installing the driver, ensure the following requirements are met:
 
 ---
 
-## 5. Installation Guide
+## 5. Universal Installation Guide (2-Step GUI-to-CLI Process)
 
-### Fedora Linux
+The official NVIDIA installer **cannot install while a graphical session (Wayland or X11 / SDDM / GDM) is running** because the display server actively holds open the GPU device nodes.
 
-Fedora comes with the `nouveau` driver enabled and GNOME Wayland as the default display server. Follow these steps:
+To make this completely painless, we provide a **Universal 2-Step Process**:
 
-#### Method 1: Automated Script (Recommended)
-
-1. Clone or copy this repository to your Fedora PC:
-   ```bash
-   git clone https://github.com/<your-username>/nvidia-390xx-linux7.git
-   cd nvidia-390xx-linux7
-   ```
-2. Run the automated Fedora setup:
-   ```bash
-   sudo ./scripts/install-fedora.sh
-   ```
-3. **If Nouveau was active:**
-   The script will blacklist nouveau, rebuild your initramfs with `dracut --force`, update GRUB boot arguments via `grubby`, and prompt you to **reboot**.
-   After rebooting, simply run the script again:
-   ```bash
-   sudo ./scripts/install-fedora.sh
-   ```
-4. **Reboot your system** once installation completes:
-   ```bash
-   sudo reboot
-   ```
+```
+[ In Your Graphical Desktop (Konsole/Terminal) ]
+                      │
+                      ▼
+       sudo ./scripts/step1-exit-gui.sh
+  (Installs dependencies, blacklists Nouveau,
+   prepares installer & drops to text console)
+                      │
+                      ▼
+[ In the Pure Text Console (TTY/CLI) ]
+                      │
+                      ▼
+             sudo install-nvidia
+  (Compiles & registers driver with DKMS,
+   installs Xorg configs & reboots into GUI)
+```
 
 ---
 
-#### Method 2: Manual Installation on Fedora
+### Step 1: Prepare System & Exit to CLI (Run in your desktop terminal)
 
-If you prefer full manual control:
+In your terminal (Konsole, GNOME Terminal, etc.), run:
 
-1. **Install Build Tools & Kernel Headers:**
-   ```bash
-   sudo dnf install -y kernel-devel kernel-headers gcc make dkms elfutils-libelf-devel libglvnd-devel pkgconf xorg-x11-server-Xorg
-   ```
+```bash
+cd /path/to/nvidia-390xx-linux7
+sudo ./scripts/step1-exit-gui.sh
+```
+*(Or run `sudo ./scripts/install-fedora.sh`, which automatically calls Step 1 if a desktop session is running).*
 
-2. **Blacklist the Nouveau Driver:**
-   ```bash
-   sudo cp configs/blacklist-nouveau.conf /etc/modprobe.d/blacklist-nouveau.conf
-   sudo grubby --update-kernel=ALL --args="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau"
-   sudo dracut --force
-   sudo reboot
-   ```
-
-3. **Install the Patched Driver:**
-   After the reboot (verify with `lsmod | grep nouveau` that nouveau is NOT loaded):
-   ```bash
-   # Build the patched .run installer if you don't already have it:
-   ./scripts/repack.sh
-
-   # Run the installer with DKMS enabled:
-   sudo ./NVIDIA-Linux-x86_64-390.157-patched.run --dkms
-   ```
-   - When asked if you want to run `nvidia-xconfig`, choose **No**.
-   - When asked if you want to install 32-bit compatibility libraries, choose **Yes**.
-
-4. **Install Xorg and Udev Configs:**
-   ```bash
-   sudo cp configs/nvidia-drm-outputclass.conf /etc/X11/xorg.conf.d/10-nvidia-drm-outputclass.conf
-   sudo cp configs/nvidia-390xx.rules /etc/udev/rules.d/60-nvidia-390xx.rules
-   sudo udevadm control --reload-rules
-   ```
-
-5. **Disable Wayland for GDM:**
-   In `/etc/gdm/custom.conf`, under `[daemon]`, set:
-   ```ini
-   WaylandEnable=false
-   ```
-
-6. **Reboot:**
-   ```bash
-   sudo reboot
-   ```
+**What Step 1 does automatically:**
+1. Installs all kernel headers, compilers, DKMS, and build tools.
+2. **On Fedora KDE:** Automatically installs `plasma-workspace-x11 kwin-x11` (since Fedora 40+ dropped X11 by default, and legacy NVIDIA 390.xx needs X11).
+3. **On Fedora GNOME:** Disables Wayland in `/etc/gdm/custom.conf` (`WaylandEnable=false`).
+4. Blacklists the open-source `nouveau` driver and rebuilds your initramfs (`dracut --force`).
+5. Creates the global CLI shortcut: `install-nvidia`.
+6. Prompts you with instructions, and cleanly stops the display manager (`systemctl isolate multi-user.target`) to bring you to a black text console login prompt.
 
 ---
 
-### Debian / Ubuntu / Linux Mint
+### Step 2: Install Driver in CLI (Run in the text console)
 
-1. Run the Debian/Ubuntu installer:
+Once the screen transitions to the black text console login prompt:
+
+1. **Log in** with your Linux username and password.
+2. Run this single command:
    ```bash
-   sudo ./scripts/install-debian-ubuntu.sh
+   sudo install-nvidia
    ```
-2. If prompted, reboot your PC to unload nouveau, then rerun the script:
-   ```bash
-   sudo ./scripts/install-debian-ubuntu.sh
-   ```
-3. Reboot to enjoy your hardware-accelerated GPU!
+   *(Or: `sudo ./scripts/step2-install-in-cli.sh`)*
+
+**What Step 2 does:**
+- Verifies that no display server is holding the GPU.
+- **Nouveau Check:** If Nouveau is still active in memory from your previous boot, it will prompt you to press `[ENTER]` to reboot once so the blacklist takes effect. After rebooting, simply log back in and run `sudo install-nvidia`.
+- Executes the patched installer and automatically registers the kernel modules with **DKMS**.
+- Configures Xorg OutputClass and udev device node rules.
+- Asks if you want to **reboot** (recommended) or immediately start the graphical desktop.
 
 ---
 
-### Arch Linux / CachyOS / Manjaro
-
-1. Run the Arch installer:
-   ```bash
-   sudo ./scripts/install-arch.sh
-   ```
-2. If running a Clang-compiled kernel (such as CachyOS), the script automatically detects it and configures `clang` and `lld` toolchains.
-3. Reboot your system.
-
----
-
-## 6. Critical Notes: Wayland vs. X11
+## 6. Critical Notes: Wayland vs. X11 & Fedora KDE
 
 > [!WARNING]
 > **NVIDIA 390.xx DOES NOT SUPPORT MODERN WAYLAND COMPOSITORS!**
 > Modern Wayland compositors (GNOME Mutter, KDE KWin) require the generic **GBM** (Generic Buffer Management) API. The legacy 390.xx driver only provides the deprecated proprietary **EGLStreams** API.
 
-### What happens if you try running Wayland?
+### What happens if you try running Wayland on GT 730?
 You will experience a black screen, freezing, or fallback to software CPU rendering (`llvmpipe`).
 
-### The Solution:
-Always use an **X11 / Xorg** session:
-- **Fedora / GNOME:** At the login screen, click your username, click the **gear icon (⚙)** in the bottom right corner, and select **"GNOME on Xorg"**. (Our installer script sets `WaylandEnable=false` in `/etc/gdm/custom.conf` automatically to default to Xorg).
-- **KDE Plasma:** Choose **"Plasma (X11)"** at the display manager login screen.
-- **XFCE / Cinnamon / MATE / LXQt:** These desktop environments use X11 natively and will work out of the box with zero modifications!
+### The Solution: Always use an X11 / Xorg Session
+- **Fedora KDE Plasma (Plasma 6):**
+  - Starting in Fedora 40/41, KDE is Wayland-only by default.
+  - Our `step1-exit-gui.sh` script automatically installs the `plasma-workspace-x11` and `kwin-x11` packages.
+  - At the **SDDM login screen**, look at the bottom-left or bottom-right session menu and select **"Plasma (X11)"**!
+- **Fedora GNOME:**
+  - Select **"GNOME on Xorg"** via the gear icon (⚙) at the login screen. Our script also sets `WaylandEnable=false` in `/etc/gdm/custom.conf` so GDM defaults to X11.
+- **XFCE / Cinnamon / MATE / LXQt:**
+  - These desktop environments use X11 natively and will work out of the box with zero modifications!
 
 ---
 

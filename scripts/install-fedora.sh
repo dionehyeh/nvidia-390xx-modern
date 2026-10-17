@@ -38,6 +38,12 @@ dnf install -y \
     pkgconf \
     xorg-x11-server-Xorg
 
+# Ensure KDE Plasma 6 X11 packages are installed if KDE is present
+if command -v kwin_wayland &>/dev/null || command -v plasmashell &>/dev/null || [ -d /usr/share/plasma ]; then
+    echo "Detected KDE Plasma on Fedora. Installing plasma-workspace-x11 & kwin-x11..."
+    dnf install -y plasma-workspace-x11 kwin-x11 || true
+fi
+
 echo "[2/6] Blacklisting nouveau driver..."
 cat << 'EOF' > /etc/modprobe.d/blacklist-nouveau.conf
 blacklist nouveau
@@ -67,7 +73,6 @@ if [ -f "${PROJECT_DIR}/configs/nvidia-390xx.rules" ]; then
 fi
 
 echo "[5/6] Checking GDM / Wayland configuration..."
-# NVIDIA 390.xx requires X11 (Wayland does not support legacy EGLStreams properly)
 if [ -f /etc/gdm/custom.conf ]; then
     if grep -q "#WaylandEnable=false" /etc/gdm/custom.conf; then
         sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm/custom.conf
@@ -78,6 +83,18 @@ if [ -f /etc/gdm/custom.conf ]; then
     else
         echo "  -> Wayland already disabled in /etc/gdm/custom.conf"
     fi
+fi
+
+# Check if a graphical session (Wayland or X11) is currently running
+if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ] || systemctl is-active --quiet display-manager 2>/dev/null; then
+    echo ""
+    echo "=========================================================================="
+    echo " [!] A graphical desktop session (Wayland or Xorg) is currently active!"
+    echo "=========================================================================="
+    echo " The NVIDIA installer cannot install while the display server is running."
+    echo " Launching Step 1 to transition cleanly into text console (CLI) mode..."
+    echo "=========================================================================="
+    exec bash "${SCRIPT_DIR}/step1-exit-gui.sh" "$@"
 fi
 
 echo "[6/6] Launching patched NVIDIA installer with DKMS enabled..."
